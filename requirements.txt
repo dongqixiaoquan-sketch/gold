@@ -1,6 +1,1 @@
-import os
-os.environ["PIP_INDEX_URL"] = "https://pypi.tuna.tsinghua.edu.cn/simple"
-streamlit==1.28.2
-pandas==2.1.4
-requests==2.30.0
-openpyxl==3.1.2
+streamlit
