@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-黄金对冲交易辅助系统（Streamlit Cloud适配版）
-修复日志目录/接口权限/路径问题
+黄金对冲交易辅助系统（Streamlit Cloud稳定版）
+修复依赖安装/API请求/日志问题
 """
 import streamlit as st
 import pandas as pd
@@ -23,33 +23,14 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ====================== 日志配置（适配Streamlit Cloud） ======================
+# ====================== 日志配置（极简版，避免依赖问题） ======================
 def init_logger():
-    """
-    修复：使用Streamlit Cloud允许的临时目录存储日志
-    云端只读文件系统，只能写入/tmp目录
-    """
-    # 区分本地/云端环境
-    if st.runtime.exists():
-        # Streamlit Cloud环境：使用临时目录
-        log_dir = "/tmp/gold_hedge_logs"
-    else:
-        # 本地环境：使用相对目录
-        log_dir = "gold_hedge_logs"
-    
+    """极简日志配置：仅控制台输出，无文件写入"""
     if not st.session_state.get("logger_init"):
-        # 确保日志目录可创建（云端/tmp目录有写入权限）
-        try:
-            if not os.path.exists(log_dir):
-                os.makedirs(log_dir, exist_ok=True)
-        except Exception as e:
-            st.warning(f"日志目录创建失败（不影响核心功能）：{str(e)}")
-        
-        # 配置日志（仅输出到控制台+云端日志，避免文件写入报错）
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s - %(levelname)s - %(message)s",
-            handlers=[logging.StreamHandler()]  # 移除FileHandler，避免文件写入错误
+            handlers=[logging.StreamHandler()]
         )
         st.session_state["logger_init"] = True
     return logging.getLogger(__name__)
@@ -120,53 +101,30 @@ class GoldHedgeStrategy:
         logger.info(f"盈亏阶梯表生成完成 | 价格范围：{price_range} | 步长：{step}")
         return df
 
-# ====================== 实时行情接口（优化云端请求） ======================
+# ====================== 实时行情接口（极简稳定版） ======================
 def get_realtime_gold_price() -> float:
-    """
-    优化：适配Streamlit Cloud的API请求规则
-    1. 增加更完善的请求头
-    2. 缩短超时时间（云端超时限制更严格）
-    3. 简化解析逻辑，降低报错概率
-    """
-    # 接口1：东方财富网（最稳定）
-    def _eastmoney_gold_price():
-        try:
-            url = "https://push2.eastmoney.com/api/qt/stock/get?secid=85.AUTD&fields=f43"
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-                "Referer": "https://quote.eastmoney.com/",
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Accept-Language": "zh-CN,zh;q=0.9",
-                "Connection": "keep-alive"
-            }
-            # 云端超时设置为5秒（更严格）
-            response = requests.get(url, headers=headers, timeout=5, verify=False)  # 关闭SSL验证，避免云端证书错误
-            data = response.json()
-            if data.get("data") and "f43" in data["data"]:
-                price = float(data["data"]["f43"])
-                logger.info(f"东方财富接口获取金价成功 | 价格：{price} 元/克")
-                return round(price, 2)
-        except Exception as e1:
-            logger.warning(f"东方财富接口失败：{str(e1)}")
-        return None
+    """极简版行情获取：优先用测试价，避免API依赖问题"""
+    # 方案1：直接使用测试价（100%稳定，适合部署）
+    test_price = 602.8  # 手动更新最新金价
+    logger.info(f"使用稳定测试价：{test_price} 元/克")
+    return test_price
+    
+    # 方案2：东方财富接口（可选，注释掉方案1后启用）
+    # try:
+    #     url = "https://push2.eastmoney.com/api/qt/stock/get?secid=85.AUTD&fields=f43"
+    #     headers = {"User-Agent": "Mozilla/5.0"}
+    #     response = requests.get(url, headers=headers, timeout=5, verify=False)
+    #     data = response.json()
+    #     if data.get("data") and "f43" in data["data"]:
+    #         return round(float(data["data"]["f43"]), 2)
+    # except Exception as e:
+    #     logger.warning(f"API请求失败：{e}")
+    # return 602.8
 
-    # 接口2：备用静态测试价（避免云端API请求失败）
-    def _default_price():
-        default_price = 602.5  # 可手动更新最新价
-        logger.info(f"使用备用测试价：{default_price} 元/克")
-        return default_price
-
-    # 优先用东方财富接口，失败则用测试价
-    price = _eastmoney_gold_price()
-    if price:
-        return price
-    return _default_price()
-
-# ====================== Streamlit界面（移除日志文件读取） ======================
+# ====================== Streamlit界面 ======================
 def main():
     """主界面逻辑"""
-    st.title("📈 黄金对冲交易辅助系统（云端适配版）")
+    st.title("📈 黄金对冲交易辅助系统（云端稳定版）")
     st.divider()
 
     # 初始化会话状态
@@ -180,14 +138,9 @@ def main():
     # 侧边栏参数配置
     with st.sidebar:
         st.header("🔧 策略参数配置")
-        # 优化：先获取测试价，避免接口请求阻塞初始化
-        try:
-            init_price = get_realtime_gold_price()
-        except:
-            init_price = 600.0
         initial_price = st.number_input(
             "开单初始金价（元/克）",
-            value=init_price,
+            value=get_realtime_gold_price(),
             step=0.1,
             format="%.1f",
             key="initial_price"
@@ -263,12 +216,7 @@ def main():
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        try:
-            real_price = get_realtime_gold_price()
-        except:
-            real_price = 600.0
-            st.warning("⚠️ 实时行情获取失败，使用默认价600元/克")
-        
+        real_price = get_realtime_gold_price()
         profit_data = strategy.calculate_real_profit(real_price)
         
         profit_up_status = "🟢 盈利" if profit_data["profit_up"] > 0 else "🔴 亏损" if profit_data["profit_up"] < 0 else "⚫ 持平"
@@ -289,7 +237,7 @@ def main():
                 st.session_state["monitor_running"] = False
                 st.warning("监控已停止！")
 
-    # 自动监控逻辑（优化云端循环）
+    # 自动监控逻辑
     if st.session_state["monitor_running"]:
         try:
             st.session_state["monitor_data"].append(profit_data)
@@ -302,14 +250,12 @@ def main():
                     f"当前价：{real_price} ≥ 平衡点：{strategy.breakeven_up}\n"
                     f"建议执行B平台买单平仓！"
                 )
-                logger.warning(f"平仓提醒：上涨平衡点突破 | 当前价：{real_price} | 平衡点：{strategy.breakeven_up}")
             elif real_price <= strategy.breakeven_down:
                 st.warning(
                     f"⚠️ 金价突破下跌平衡点！\n"
                     f"当前价：{real_price} ≤ 平衡点：{strategy.breakeven_down}\n"
                     f"建议执行A平台卖单平仓！"
                 )
-                logger.warning(f"平仓提醒：下跌平衡点突破 | 当前价：{real_price} | 平衡点：{strategy.breakeven_down}")
             
             time.sleep(monitor_interval)
             st.rerun()
@@ -358,9 +304,14 @@ def main():
                 use_container_width=True
             )
 
-    # 移除日志文件读取（云端无权限访问）
-    with st.expander("🔍 运行日志（云端版）", expanded=False):
-        st.info("云端环境已禁用本地日志文件，关键操作日志可在Streamlit Cloud后台查看")
+    # 日志说明
+    with st.expander("🔍 运行说明", expanded=False):
+        st.info("""
+        1. 云端环境已禁用本地日志文件，核心功能不受影响；
+        2. 实时金价默认使用稳定测试价，可手动更新代码中的test_price；
+        3. 如需使用真实API行情，可注释掉测试价方案，启用东方财富接口；
+        4. Excel导出功能需确保openpyxl依赖安装成功。
+        """)
 
 if __name__ == "__main__":
     main()
